@@ -1,0 +1,209 @@
+Parameters:
+  EnvironmentName:
+    Description: Environment Name that will be prefixed to the resources
+    Type: String
+  ServerInstanceType:
+    Description: Select the ec2 instance type from list
+    Type: String
+    Default: t2.small
+    AllowedValues:
+      - t2.micro
+      - t2.small
+  MyKeyName:
+    Description: Select key
+    Type: String
+    Default: jenkins-server-access
+  ServerAMI:
+    Type: String
+    Default: ami-07ebfd5b3428b6f4d
+    Description: AMI of a server instance to use
+    AllowedValues:  # ubuntu
+      - ami-07ebfd5b3428b6f4d
+      - ami-08bc77a2c7eb2b1da # 16.04
+      - ami-062f7200baf2fa504 # Amazon Linux 2
+
+Resources:
+
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http traffic to LB
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${EnvironmentName}-LBSecurityGroup"
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to ec2 via SSH from local only
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-InstanceSG
+
+  #AutoScaling group configuration
+  AppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          # sudo rm /var/www/html/index.html
+          # sudo aws s3 cp s3://udacity-udagram/udagram.zip /var/www/html
+          # sudo unzip /var/www/html/udagram.zip -d /var/www/html
+          # systemctl restart apache2.service
+      ImageId: !Ref ServerAMI
+
+      KeyName: !Ref MyKeyName  # todo
+      # IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      InstanceType: !Ref ServerInstanceType
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: "10"
+            DeleteOnTermination: true
+            VolumeType: "gp2"
+  # AppLaunchConfig:
+  #   Type: AWS::EC2::LaunchTemplate
+  #   Properties:
+  #     LaunchTemplateName: !Sub ${EnvironmentName}-LaunchTemplate
+  #     LaunchTemplateData:
+  #       BlockDeviceMappings:
+  #       - DeviceName: "/dev/sdk"
+  #         Ebs:
+  #           VolumeSize: '10'
+  #           DeleteOnTermination: true
+  #           VolumeType: "gp2"
+  #       ImageId: !Ref ServerAMI
+  #       InstanceType: !Ref ServerInstanceType
+  #       UserData:
+  #         Fn::Base64: !Sub |
+  #           #!/bin/bash
+  #           apt-get update -y
+  #           apt-get install unzip awscli -y
+  #           apt-get install apache2 -y
+  #           systemctl start apache2.service
+  #           sudo rm /var/www/html/index.html
+  #           sudo aws s3 cp s3://udacity-udagram/udagram.zip /var/www/html
+  #           sudo unzip /var/www/html/udagram.zip -d /var/www/html
+  #           systemctl restart apache2.service
+  #
+  #       KeyName: jenkins-server-access   # todo
+  #       # IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+  #       SecurityGroupIds:
+  #         - Ref: "InstanceSecurityGroup"
+
+  AppAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: '1'
+      MaxSize: '2'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub ${EnvironmentName}-PRIV-NET1
+        - Fn::ImportValue: !Sub ${EnvironmentName}-PRIV-NET2
+      LaunchConfigurationName: !Ref AppLaunchConfig
+      TargetGroupARNs:
+        - !Ref WebAppTargetGroup
+    # CreationPolicy:
+    #   ResourceSignal:
+    #     Timeout: PT15M
+    # UpdatePolicy:
+    #   AutoScalingRollingUpdate:
+    #     MinInstancesInService: '1'
+    #     MaxBatchSize: '1'
+    #     PauseTime: PT15M
+    #     WaitOnResourceSignals: 'true'
+
+  #LB Config
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "LB-${EnvironmentName}"
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB-NET1"
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB-NET2"
+      SecurityGroups:
+        - Ref: LBSecurityGroup
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTargetGroup
+      LoadBalancerArn: !Ref WebAppLB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward  # traffic to the specific target group
+          TargetGroupArn: !Ref WebAppTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref Listener
+      Priority: 1
+  # healthChecks are defined here
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 8080
+      Protocol: HTTP
+      HealthCheckPath: /
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+Outputs:
+  WebsiteURL:
+    Description: Application URL of the website [From the LB]
+    Value: !Join
+      - ''
+      - - 'http://'
+        - !GetAtt
+          - WebAppLB
+          - DNSName
+  #
+  #
