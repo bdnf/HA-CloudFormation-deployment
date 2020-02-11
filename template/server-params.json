@@ -1,0 +1,18 @@
+[
+  {
+      "ParameterKey": "EnvironmentName",
+      "ParameterValue": "HA-App"
+  },
+  {
+      "ParameterKey": "ServerInstanceType",
+      "ParameterValue": "t3.small"
+  },
+  {
+      "ParameterKey": "DataBucket",
+      "ParameterValue": "udacity-demo-1"
+  },
+  {
+      "ParameterKey": "ServerAMI",
+      "ParameterValue": "ami-07ebfd5b3428b6f4d"
+  }
+]

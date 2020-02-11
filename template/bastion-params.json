@@ -1,0 +1,22 @@
+[
+  {
+      "ParameterKey": "EnvironmentName",
+      "ParameterValue": "HA-App"
+  },
+  {
+      "ParameterKey": "MyKeyName",
+      "ParameterValue": "bastion-host-keypair"
+  },
+  {
+      "ParameterKey": "MyPrivateBucketName",
+      "ParameterValue": "bastion-host-server-access-keypair"
+  },
+  {
+      "ParameterKey": "BastionAMI",
+      "ParameterValue": "ami-07ebfd5b3428b6f4d"
+  },
+  {
+      "ParameterKey": "MyIP",
+      "ParameterValue": "1.2.3.4/32"
+  }
+]

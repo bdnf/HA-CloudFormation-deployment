@@ -1,0 +1,44 @@
+Description: Cloud Front distribution in front of LB
+Parameters:
+  EnvironmentName:
+    Description: Environment Name that will be prefixed to the resources
+    Type: String
+Resources:
+  myDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Origins:
+          - Id:
+              Fn::ImportValue: !Sub ${EnvironmentName}-LB-Origin
+            DomainName:
+              Fn::ImportValue: !Sub ${EnvironmentName}-LB-Origin
+            CustomOriginConfig:
+              HTTPPort: '80'
+              #HTTPSPort: '443'
+              OriginProtocolPolicy: http-only
+          Enabled: 'true'
+          Comment: My LB Cloud Front distribution
+          DefaultRootObject: index.html
+          # Logging:
+          #   IncludeCookies: 'true'
+          #   Bucket: mylogs.s3.amazonaws.com
+          #   Prefix: myprefix
+
+          DefaultCacheBehavior:
+            TargetOriginId:
+                Fn::ImportValue: !Sub ${EnvironmentName}-LB-Origin
+            ForwardedValues:
+              QueryString: 'false'
+              Cookies:
+                Forward: all
+            ViewerProtocolPolicy: allow-all
+            MinTTL: '100'
+            SmoothStreaming: 'true'
+          CustomErrorResponses:
+          - ErrorCode: '404'
+            ResponsePagePath: "/error.html"
+            ResponseCode: '200'
+            ErrorCachingMinTTL: '30'
+          ViewerCertificate:
+            CloudFrontDefaultCertificate: 'true'

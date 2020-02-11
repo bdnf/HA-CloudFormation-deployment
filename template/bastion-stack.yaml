@@ -1,0 +1,118 @@
+Description: Bastion Host
+Parameters:
+  EnvironmentName:
+    Description: Environment Name that will be prefixed to the resources
+    Type: String
+  MyKeyName:
+    Description: Select key to access Bastion host
+    Type: String
+    Default: jenkins-server-access
+  BastionAMI:
+    Type: String
+    Default: ami-07ebfd5b3428b6f4d
+    Description: AMI of a bastion host instance to use
+    AllowedValues:  # ubuntu
+      - ami-07ebfd5b3428b6f4d
+      - ami-08bc77a2c7eb2b1da # 16.04
+      - ami-062f7200baf2fa504 # Amazon Linux 2
+  MyIP:
+    Type: String
+    Description: Put you IP address to access bastion host
+
+Resources:
+  BastionEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref BastionAMI
+      InstanceType: t2.micro
+      KeyName: !Ref MyKeyName
+      SecurityGroupIds:
+        - !Ref SSHSecurityGroup
+        #- !GetAtt "SSHSecurityGroup.GroupId"
+      SubnetId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-PUB-NET1"
+      IamInstanceProfile: !Ref BastionIamInstanceProfile
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+          - |
+            #!/bin/bash -xe
+            sudo su - ubuntu
+            apt-get update -y
+            apt-get install unzip awscli -y
+            sudo su - ubuntu -c 'ssh-keygen -t rsa -N "" -f bastion.key' #> /dev/null
+            # put keypair to a private bucket
+            sudo su - ubuntu -c 'aws s3 cp bastion.key.pub s3://my-bastion-host-access-keys/accesskey/'
+            sudo su - ubuntu -c 'aws s3 cp bastion.key s3://my-bastion-host-access-keys/accesskey/'
+          - BucketId:
+             Fn::ImportValue:
+               !Sub ${EnvironmentName}-PubKeyBucket
+
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bastion SG
+      VpcId:
+          Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: !Ref MyIP
+
+  BastionIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+
+  # full access to other ec2 instances
+  BastionIamPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: fullAccess
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "ec2:*"
+            Resource: "*"
+          - Effect: Allow
+            #Action: "s3:*"
+            Action: s3:PutObject
+            Resource:
+              Fn::ImportValue:
+                !Sub ${EnvironmentName}-PubKeyBucketARN
+      Roles:
+        - !Ref BastionIamRole
+
+  BastionIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref BastionIamRole
+
+Outputs:
+  Bastion:
+    Description: Bastion Host reference
+    Value: !Ref BastionEC2Instance
+    Export:
+      Name: !Sub ${EnvironmentName}-BastionEC2
+  BastionSG:
+    Description: Bastion Host security group
+    Value: !Ref SSHSecurityGroup
+    Export:
+      Name: !Sub ${EnvironmentName}-BastionSG

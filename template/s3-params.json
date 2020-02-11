@@ -1,0 +1,14 @@
+[
+  {
+      "ParameterKey": "EnvironmentName",
+      "ParameterValue": "HA-App"
+  },
+  {
+      "ParameterKey": "MyKeyPairBucket",
+      "ParameterValue": "my-bastion-host-access-keys"
+  },
+  {
+      "ParameterKey": "MyDataBucket",
+      "ParameterValue": "website-archive-app-udagram"
+  }
+]

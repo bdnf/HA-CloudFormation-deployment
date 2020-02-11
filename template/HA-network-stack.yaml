@@ -1,3 +1,4 @@
+Description: Network setup
 Parameters:
 
   EnvironmentName:
@@ -71,7 +72,7 @@ Resources:
         - Key: Network
           Value: Public
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ0)
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -84,7 +85,7 @@ Resources:
         - Key: Network
           Value: Public
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -97,7 +98,7 @@ Resources:
         - Key: Network
           Value: Private
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Subnet (AZ0)
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -110,16 +111,16 @@ Resources:
         - Key: Network
           Value: Private
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
 
   # Nat Gatewas to be placed in Public subnets
-  ElasticIP0:
+  ElasticIP1:
     Type: AWS::EC2::EIP
     DependsOn: GatewayAttachment
     Properties:
       Domain: vpc
 
-  ElasticIP1:
+  ElasticIP2:
     Type: AWS::EC2::EIP
     DependsOn: GatewayAttachment
     Properties:
@@ -128,13 +129,13 @@ Resources:
   NatGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt ElasticIP0.AllocationId
+      AllocationId: !GetAtt ElasticIP1.AllocationId
       SubnetId: !Ref PublicSubnet1
 
   NatGateway2:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt ElasticIP1.AllocationId
+      AllocationId: !GetAtt ElasticIP2.AllocationId
       SubnetId: !Ref PublicSubnet2
 
   # allow NAT to talk to the outside world

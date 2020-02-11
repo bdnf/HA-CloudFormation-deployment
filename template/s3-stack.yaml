@@ -1,0 +1,49 @@
+Parameters:
+  EnvironmentName:
+    Description: Environment Name that will be prefixed to the resource
+    Type: String
+  MyKeyPairBucket:
+    Type: String
+    Default: my-bastion-host-access-keys
+    Description: Create private bucket to store public access key
+  MyDataBucket:
+    Type: String
+    Default: website-archive-app-udagram
+    Description: Private bucket to store and update data for webserver
+
+Resources:
+  # S3 that stores PubKey that provides host an ability
+  # to be acessed from bastion host
+  BastionPubKeyBucket:
+    Description: Private bucket that stores bastion key pair
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref MyKeyPairBucket
+    DeletionPolicy: Retain
+
+  MyPrivateBucketName:
+    Type: AWS::S3::Bucket
+    Description: Private bucket to store and update data for webserver
+    Properties:
+      BucketName: !Ref MyDataBucket
+    DeletionPolicy: Delete
+
+Outputs:
+  PubKeyBucket:
+    Value: !Ref BastionPubKeyBucket
+    Description: Private bucket that stores bastion key pair
+    Export:
+      Name: !Sub ${EnvironmentName}-PubKeyBucket
+  DataBucket:
+    Value: !Ref MyPrivateBucketName
+    Description: Private bucket that stores web archive
+    Export:
+      Name: !Sub ${EnvironmentName}-DataBucket
+  PubKeyBucketARN:
+    Value: !Join ["", ["arn:aws:s3:::", !Ref "BastionPubKeyBucket", "/*"]]
+    Export:
+      Name: !Sub ${EnvironmentName}-PubKeyBucketARN
+  DataBucketARN:
+    Value: !Join ["", ["arn:aws:s3:::", !Ref "MyPrivateBucketName", "/*"]]
+    Export:
+      Name: !Sub ${EnvironmentName}-DataBucketARN

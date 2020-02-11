@@ -1,3 +1,4 @@
+Description: LB and Auto Scaling group
 Parameters:
   EnvironmentName:
     Description: Environment Name that will be prefixed to the resources
@@ -9,10 +10,11 @@ Parameters:
     AllowedValues:
       - t2.micro
       - t2.small
-  MyKeyName:
-    Description: Select key
+      - t3.small
+  DataBucket:
+    Description: Select an existing private bucket NAME with website data archive, e.g udacity-demo-1 if bucket name is s3://udacity-demo-1/udacity.zip
     Type: String
-    Default: jenkins-server-access
+    Default: udacity-demo-1
   ServerAMI:
     Type: String
     Default: ami-07ebfd5b3428b6f4d
@@ -69,25 +71,75 @@ Resources:
         - Key: Name
           Value: !Sub ${EnvironmentName}-InstanceSG
 
+  # pull website data from the bucket
+  GetS3DataRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+
+  # full access from the bucket
+  ServerIamPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: getAccess
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            #Action: "s3:*"
+            Action: s3:GetObject
+            Resource:
+              Fn::ImportValue:
+                !Sub ${EnvironmentName}-DataBucketARN
+      Roles:
+        - !Ref GetS3DataRole
+
+  ServerIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref GetS3DataRole
+
   #AutoScaling group configuration
   AppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
+      IamInstanceProfile: !Ref ServerIamInstanceProfile
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          apt-get update -y
-          apt-get install unzip awscli -y
-          apt-get install apache2 -y
-          systemctl start apache2.service
-          # sudo rm /var/www/html/index.html
-          # sudo aws s3 cp s3://udacity-udagram/udagram.zip /var/www/html
-          # sudo unzip /var/www/html/udagram.zip -d /var/www/html
-          # systemctl restart apache2.service
+        Fn::Base64:
+          Fn::Sub:
+          - |
+            #!/bin/bash
+            apt-get update -y
+            apt-get install unzip awscli -y
+            apt-get install apache2 -y
+            systemctl start apache2.service
+            cd /var/www/html
+            rm index.html
+            aws s3 cp s3://${DataBucket}/udacity.zip . --no-sign-request
+            unzip -o udacity.zip && rm udacity.zip
+            systemctl restart apache2.service
+            # Copy pub key
+            aws s3 cp s3://${BucketId}/accesskey/bastion.key.pub bastion.key.pub
+            sudo chown 1000 bastion.key.pub  && mv /home/ubuntu/.ssh
+            sudo su - ubuntu
+            cat /home/ubuntu/.ssh/bastion.key.pub >> /home/ubuntu/.ssh/authorized_keys
+          - BucketId:
+             Fn::ImportValue:
+               !Sub ${EnvironmentName}-PubKeyBucketARN
+
       ImageId: !Ref ServerAMI
 
-      KeyName: !Ref MyKeyName  # todo
-      # IamInstanceProfile: !Ref ProfileWithRolesForOurApp
       SecurityGroups:
         - !Ref InstanceSecurityGroup
       InstanceType: !Ref ServerInstanceType
@@ -122,7 +174,6 @@ Resources:
   #           sudo unzip /var/www/html/udagram.zip -d /var/www/html
   #           systemctl restart apache2.service
   #
-  #       KeyName: jenkins-server-access   # todo
   #       # IamInstanceProfile: !Ref ProfileWithRolesForOurApp
   #       SecurityGroupIds:
   #         - Ref: "InstanceSecurityGroup"
@@ -189,7 +240,7 @@ Resources:
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 8
       HealthyThresholdCount: 2
-      Port: 8080
+      Port: 80
       Protocol: HTTP
       HealthCheckPath: /
       UnhealthyThresholdCount: 5
@@ -205,5 +256,8 @@ Outputs:
         - !GetAtt
           - WebAppLB
           - DNSName
-  #
-  #
+  WebAppLBOrigin:
+    Description: Load Balancer Id and DNS Name
+    Value: !GetAtt [WebAppLB, DNSName]
+    Export:
+      Name: !Sub ${EnvironmentName}-LB-Origin
