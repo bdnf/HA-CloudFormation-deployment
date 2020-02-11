@@ -1,5 +1,9 @@
 # High Availability Deployment with CloudFormation
 
+# Website Link
+
+URL for verifying the completed project:
+[http://LB-HA-App-2142331984.us-east-1.elb.amazonaws.com]
 
 ## Problem description
 
